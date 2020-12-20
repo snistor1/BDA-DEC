@@ -160,7 +160,7 @@ def compute_repr_distance(x, y, sigma):
     return np.dot(diff, diff)
 
 
-def collect_repr(pop):
+def collect_repr(pop, X):
     centers = pop[0]
     sigmas = pop[1]
     repr_set = np.empty(shape=(3, pop.shape[1], pop.shape[2]))
@@ -203,16 +203,21 @@ def collect_repr(pop):
                 repr_unique.add((tuple(centers[i]), tuple(sigmas[i]), repr_set[2][closest]))
                 nr_repr += 1
     repr_set = repr_set[:, :nr_repr, :]
-    
+
     # Refinement process below
+    fitness = get_fitness(repr_set[:2, :, :], X)
     for _ in range(nr_repr):
         change = False
         for i in range(nr_repr - 1):
             for j in range(1, nr_repr):
-                if repr_set[2][i] != repr_set[2][j] and \
+                if tuple(repr_set[2][i]) != tuple(repr_set[2][j]) and \
                         (compute_repr_distance(repr_set[0][i], repr_set[0][j], repr_set[1][i]) <= DELTA_2 or
                          compute_repr_distance(repr_set[0][i], repr_set[0][j], repr_set[1][j]) <= DELTA_2):
-                    pass
+                    change = True
+                    if fitness[i] > fitness[j]:
+                        repr_set[2][j] = repr_set[2][i]
+                    else:
+                        repr_set[2][i] = repr_set[2][j]
         if not change:
             break
     return repr_set
@@ -263,7 +268,7 @@ def differential_clustering(X, n_iter, crowding=True):
     # This population is only for testing purposes.
     pop = initialize((5, 4), [-0.5, 1.5])
     # TODO the function below is only for debugging, remove it later!
-    representatives = collect_repr(pop)
+    representatives = collect_repr(pop, X)
     # Precompute ranges that are needed for selecting indices distinct from
     # i, for all i in {0...m-1}. It's an implementation detail, but it reduces
     # execution time to initialize it only once here.
@@ -294,7 +299,7 @@ def differential_clustering(X, n_iter, crowding=True):
             pop[:, replace_mask, :] = new_pop[:, replace_mask, :]
         else:
             raise NotImplementedError("TODO: Implement without crowding")
-    representatives = collect_repr(pop)
+    representatives = collect_repr(pop, X)
 
 
 def main():
