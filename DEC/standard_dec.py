@@ -156,7 +156,8 @@ def compute_distances(X, Y):
 
 
 def compute_repr_distance(x, y, sigma):
-    return 1 / np.power(sigma, 2) * (np.sum(np.power(x - y, 2)))
+    diff = (x - y) / sigma
+    return np.dot(diff, diff)
 
 
 def collect_repr(pop):
@@ -172,39 +173,37 @@ def collect_repr(pop):
     for i in range(1, len(centers)):
         distances = [compute_repr_distance(centers[i], repr_set[0][j], repr_set[1][j]) for j in range(nr_repr)]
         closest = np.argmin(distances, axis=0)
-        # if type(closest) is np.ndarray:
-        #     closest = closest[0]
+        if type(closest) is np.ndarray:
+            closest = closest[0]
         x_distance = compute_repr_distance(centers[i], repr_set[0][closest], sigmas[i])
         if distances[closest] <= DELTA_1 or x_distance <= DELTA_1:
             new_repr = ((centers[i] + repr_set[0][closest]) / 2,
                         np.maximum(sigmas[i], repr_set[1][closest]),
                         next_label)
-            if new_repr not in repr_unique:
+            if (tuple(new_repr[0]), tuple(new_repr[1]), new_repr[2]) not in repr_unique:
                 repr_set[0][nr_repr] = new_repr[0]
                 repr_set[1][nr_repr] = new_repr[1]
                 repr_set[2][nr_repr] = new_repr[2]
-                repr_unique.add(new_repr)
+                repr_unique.add((tuple(new_repr[0]), tuple(new_repr[1]), new_repr[2]))
                 next_label += 1
                 nr_repr += 1
         elif distances[closest] > DELTA_2 and x_distance > DELTA_2:
-            if (centers[i], sigmas[i], next_label) not in repr_unique:
+            if (tuple(centers[i]), tuple(sigmas[i]), next_label) not in repr_unique:
                 repr_set[0][nr_repr] = centers[i]
                 repr_set[1][nr_repr] = sigmas[i]
                 repr_set[2][nr_repr] = next_label
-                repr_unique.add((centers[i], sigmas[i], next_label))
+                repr_unique.add((tuple(centers[i]), tuple(sigmas[i]), next_label))
                 next_label += 1
                 nr_repr += 1
         else:
-            if (centers[i], sigmas[i], repr_set[2][closest]) not in repr_unique:
+            if (tuple(centers[i]), tuple(sigmas[i]), repr_set[2][closest]) not in repr_unique:
                 repr_set[0][nr_repr] = centers[i]
                 repr_set[1][nr_repr] = sigmas[i]
                 repr_set[2][nr_repr] = repr_set[2][closest]
-                repr_unique.add((centers[i], sigmas[i], repr_set[2][closest]))
+                repr_unique.add((tuple(centers[i]), tuple(sigmas[i]), repr_set[2][closest]))
                 nr_repr += 1
-
     repr_set = repr_set[:, :nr_repr, :]
-    print(repr_set.shape)
-    exit()
+    
     # Refinement process below
     for _ in range(nr_repr):
         change = False
