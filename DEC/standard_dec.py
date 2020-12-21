@@ -155,12 +155,35 @@ def compute_distances(X, Y):
     return dist_matrix
 
 
+def classify_data(repr_set, data):
+    cluster_result = np.zeros(shape=(data.shape[0],))
+    distances = compute_distances(repr_set[:2, :, :], data)
+    distances = np.swapaxes(distances, 0, 1)
+    min_idx, min_values = distances.argmin(axis=1), distances.min(axis=1)
+    cluster_mask = min_values <= DELTA_3
+    clusters = min_idx[cluster_mask]
+    cluster_result[cluster_mask] = repr_set[2][clusters, 0]
+
+    # Clusters refining below
+    if distances.shape[1] > 1:  # if we have at least 2 representatives for each input, we can try to refine them
+        cluster_min_size = data.shape[0] / (4 * len(np.unique(repr_set[2][:, 0])))
+        unique, counts = np.unique(cluster_result, return_counts=True)
+        outlier_mask = unique == 0
+        unique, counts = unique[~outlier_mask], counts[~outlier_mask]
+        small_clusters = unique[counts < cluster_min_size]
+        sorted_distances = np.sort(distances, axis=1)
+        for i in range(len(cluster_result)):
+            if cluster_result[i] in small_clusters and sorted_distances[i][1] <= DELTA_3:
+                cluster_result[i] = repr_set[2][1, 0]
+    return cluster_result
+
+
 def compute_repr_distance(x, y, sigma):
     diff = (x - y) / sigma
     return np.dot(diff, diff)
 
 
-def collect_repr(pop, X):
+def collect_repr(pop, data):
     centers = pop[0]
     sigmas = pop[1]
     repr_set = np.empty(shape=(3, pop.shape[1], pop.shape[2]))
@@ -196,16 +219,16 @@ def collect_repr(pop, X):
                 next_label += 1
                 nr_repr += 1
         else:
-            if (tuple(centers[i]), tuple(sigmas[i]), repr_set[2][closest]) not in repr_unique:
+            if (tuple(centers[i]), tuple(sigmas[i]), repr_set[2][closest, 0]) not in repr_unique:
                 repr_set[0][nr_repr] = centers[i]
                 repr_set[1][nr_repr] = sigmas[i]
                 repr_set[2][nr_repr] = repr_set[2][closest]
-                repr_unique.add((tuple(centers[i]), tuple(sigmas[i]), repr_set[2][closest]))
+                repr_unique.add((tuple(centers[i]), tuple(sigmas[i]), repr_set[2][closest, 0]))
                 nr_repr += 1
     repr_set = repr_set[:, :nr_repr, :]
 
     # Refinement process below
-    fitness = get_fitness(repr_set[:2, :, :], X)
+    fitness = get_fitness(repr_set[:2, :, :], data)
     for _ in range(nr_repr):
         change = False
         for i in range(nr_repr - 1):
@@ -220,7 +243,9 @@ def collect_repr(pop, X):
                         repr_set[2][i] = repr_set[2][j]
         if not change:
             break
-    return repr_set
+
+    clustered_result = classify_data(repr_set, data)
+    return clustered_result
 
 
 def get_fitness(population, data):
@@ -267,8 +292,6 @@ def differential_clustering(X, n_iter, crowding=True):
     """
     # This population is only for testing purposes.
     pop = initialize((5, 4), [-0.5, 1.5])
-    # TODO the function below is only for debugging, remove it later!
-    representatives = collect_repr(pop, X)
     # Precompute ranges that are needed for selecting indices distinct from
     # i, for all i in {0...m-1}. It's an implementation detail, but it reduces
     # execution time to initialize it only once here.
@@ -299,7 +322,9 @@ def differential_clustering(X, n_iter, crowding=True):
             pop[:, replace_mask, :] = new_pop[:, replace_mask, :]
         else:
             raise NotImplementedError("TODO: Implement without crowding")
-    representatives = collect_repr(pop, X)
+    clustered_result = collect_repr(pop, X)
+    print(clustered_result)
+    # TODO: make some plots here or something, anything
 
 
 def main():
