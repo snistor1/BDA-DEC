@@ -1,5 +1,6 @@
 import numpy as np
 
+from copy import deepcopy
 from sklearn.datasets import load_iris
 from sklearn.preprocessing import normalize
 from scipy.spatial.distance import mahalanobis
@@ -238,9 +239,9 @@ def collect_repr(pop, data):
                          compute_repr_distance(repr_set[0][i], repr_set[0][j], repr_set[1][j]) <= DELTA_2):
                     change = True
                     if fitness[i] > fitness[j]:
-                        repr_set[2][j] = repr_set[2][i]
+                        repr_set[2][j] = deepcopy(repr_set[2][i])
                     else:
-                        repr_set[2][i] = repr_set[2][j]
+                        repr_set[2][i] = deepcopy(repr_set[2][j])
         if not change:
             break
 
@@ -291,14 +292,15 @@ def differential_clustering(X, n_iter, crowding=True):
             Default value is True (False branch hasn't been implemented).
     """
     # This population is only for testing purposes.
-    pop = initialize((5, 4), [-0.5, 1.5])
+    pop = initialize((POP_SIZE, X.shape[1]), [-0.5, 1.5])
     # Precompute ranges that are needed for selecting indices distinct from
     # i, for all i in {0...m-1}. It's an implementation detail, but it reduces
     # execution time to initialize it only once here.
     precomputed_ranges = np.array([np.delete(np.arange(pop.shape[1]), i)
                                    for i in range(pop.shape[1])])
-    for _ in range(n_iter):
+    for i in range(n_iter):
         # Construct new (c_i, sigma_i).
+        print(f'Iteration: {i + 1}')
         new_pop = search(pop, ranges=precomputed_ranges)
         if crowding:
             # Find the element (c, sigma) most similar to (c_i, sigma_i).
