@@ -3,7 +3,6 @@ import numpy as np
 from copy import deepcopy
 from sklearn.datasets import load_iris, make_blobs
 from sklearn.preprocessing import StandardScaler
-from scipy.spatial.distance import mahalanobis
 from matplotlib import pyplot as plt
 from matplotlib.patches import Ellipse
 
@@ -179,6 +178,9 @@ def classify_data(repr_set, data):
         for i in range(len(cluster_result)):
             if cluster_result[i] in small_clusters and sorted_distances[i][1] <= DELTA_3:
                 cluster_result[i] = repr_set[2][1, 0]
+    values = np.unique(cluster_result)
+    for i in range(len(values)):
+        cluster_result[cluster_result == values[i]] = i + 1
     return cluster_result
 
 
@@ -236,7 +238,7 @@ def collect_repr(pop, data):
     for _ in range(nr_repr):
         change = False
         for i in range(nr_repr - 1):
-            for j in range(1, nr_repr):
+            for j in range(i + 1, nr_repr):
                 if tuple(repr_set[2][i]) != tuple(repr_set[2][j]) and \
                         (compute_repr_distance(repr_set[0][i], repr_set[0][j], repr_set[1][i]) <= DELTA_2 or
                          compute_repr_distance(repr_set[0][i], repr_set[0][j], repr_set[1][j]) <= DELTA_2):
@@ -280,7 +282,8 @@ def get_fitness(population, data):
                                  np.ones(data_size))
 
 
-def differential_clustering(X, n_iter, crowding=True):
+# noinspection PyUnreachableCode
+def differential_clustering(X, y, n_iter, crowding=True):
     """
     CDE-based clustering algorithm with gaussian mixtures.
 
@@ -295,15 +298,15 @@ def differential_clustering(X, n_iter, crowding=True):
             Default value is True (False branch hasn't been implemented).
     """
     # This population is only for testing purposes.
-    pop = initialize(X, (POP_SIZE, X.shape[1]), [0.0, 0.5])
+    pop = initialize(X, X.shape, [0.0, 0.5])
     # Precompute ranges that are needed for selecting indices distinct from
     # i, for all i in {0...m-1}. It's an implementation detail, but it reduces
     # execution time to initialize it only once here.
     precomputed_ranges = np.array([np.delete(np.arange(pop.shape[1]), i)
                                    for i in range(pop.shape[1])])
     if __debug__:
-        assert X.shape[1] == 2, "Can only plot datasets with exactly 2" \
-            " dimensions"
+        assert X.shape[1] == 2, "Can only plot datasets with exactly 2 dimensions"
+
         plt.ion()
         fig, ax = plt.subplots()
         data_scatter = ax.scatter(X[:, 0], X[:, 1], c='green')
@@ -342,18 +345,22 @@ def differential_clustering(X, n_iter, crowding=True):
         else:
             raise NotImplementedError("TODO: Implement without crowding")
         if __debug__:
-            for i in range(len(clusters)):
-                clusters[i].set_center((pop[0, i, 0], pop[0, i, 1]))
-                clusters[i].width = pop[1, i, 0]
-                clusters[i].height = pop[1, i, 1]
+            for k in range(len(clusters)):
+                clusters[k].set_center((pop[0, k, 0], pop[0, k, 1]))
+                clusters[k].width = pop[1, k, 0]
+                clusters[k].height = pop[1, k, 1]
             # cluster_scatter.set_offsets(np.c_[pop[0, :, 0], pop[0, :, 1]])
             fig.canvas.draw_idle()
             plt.pause(0.05)
     if __debug__:
         plt.waitforbuttonpress()
-    # clustered_result = collect_repr(pop, X)
-    # print(clustered_result)
-    # TODO: make some plots here or something, anything
+    clustered_result = collect_repr(pop, X)
+    fig, axs = plt.subplots(ncols=2)
+    axs[0].scatter(X[:, 0], X[:, 1], c=y, cmap='Set1')
+    axs[1].scatter(X[:, 0], X[:, 1], c=clustered_result, cmap='Set2')
+    plt.show()
+    # print(f'Predicted: \n{clustered_result}')
+    # print(f'Actual: \n{y}')
 
 
 def main():
@@ -363,7 +370,7 @@ def main():
     # differential_clustering(scaler.transform(X[:, :2]), N_ITER)
     X, y = make_blobs(200, 2)
     scaler.fit(X)
-    differential_clustering(scaler.transform(X), N_ITER)
+    differential_clustering(scaler.transform(X), y, N_ITER)
 
 
 if __name__ == '__main__':
