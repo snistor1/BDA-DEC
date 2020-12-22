@@ -4,11 +4,12 @@ from copy import deepcopy
 from sklearn.datasets import load_iris
 from sklearn.preprocessing import normalize
 from scipy.spatial.distance import mahalanobis
+from matplotlib import pyplot as plt
 
 from defines import *
 
 
-def initialize(shape, domain, eps=10e-6, beta=BETA,
+def initialize(X, shape, domain, eps=10e-6, beta=BETA,
                dtype=np.float64):
     """
     Initializes the population for the CDE clustering algorithm.
@@ -41,7 +42,8 @@ def initialize(shape, domain, eps=10e-6, beta=BETA,
     a, b = domain
     assert a < b, "domain invalid; a must be smaller than b"
     rng = np.random.default_rng(seed=1)
-    centroids = a + (b - a) * rng.random(size=shape, dtype=dtype)
+    # centroids = a + (b - a) * rng.random(size=shape, dtype=dtype)
+    centroids = X[rng.integers(X.shape[0], size=shape[0])]
     variances = eps + ((b - a) / beta) * rng.random(size=shape, dtype=dtype)
     return np.vstack((centroids[np.newaxis, ...],
                       variances[np.newaxis, ...]))
@@ -292,12 +294,18 @@ def differential_clustering(X, n_iter, crowding=True):
             Default value is True (False branch hasn't been implemented).
     """
     # This population is only for testing purposes.
-    pop = initialize((POP_SIZE, X.shape[1]), [-0.5, 1.5])
+    pop = initialize(X, (POP_SIZE, X.shape[1]), [0.0, 0.5])
     # Precompute ranges that are needed for selecting indices distinct from
     # i, for all i in {0...m-1}. It's an implementation detail, but it reduces
     # execution time to initialize it only once here.
     precomputed_ranges = np.array([np.delete(np.arange(pop.shape[1]), i)
                                    for i in range(pop.shape[1])])
+    if __debug__:
+        plt.ion()
+        fig, ax = plt.subplots()
+        data_scatter = ax.scatter(X[:, 0], X[:, 1], c='green')
+        cluster_scatter = ax.scatter(pop[0, :, 0], pop[0, :, 1], c='red')
+        plt.draw()
     for i in range(n_iter):
         # Construct new (c_i, sigma_i).
         print(f'Iteration: {i + 1}')
@@ -324,6 +332,12 @@ def differential_clustering(X, n_iter, crowding=True):
             pop[:, replace_mask, :] = new_pop[:, replace_mask, :]
         else:
             raise NotImplementedError("TODO: Implement without crowding")
+        if __debug__:
+            cluster_scatter.set_offsets(np.c_[pop[0, :, 0], pop[0, :, 1]])
+            fig.canvas.draw_idle()
+            plt.pause(0.1)
+    if __debug__:
+        plt.waitforbuttonpress()
     clustered_result = collect_repr(pop, X)
     print(clustered_result)
     # TODO: make some plots here or something, anything
@@ -331,7 +345,7 @@ def differential_clustering(X, n_iter, crowding=True):
 
 def main():
     X, y = load_iris(return_X_y=True)
-    differential_clustering(normalize(X), N_ITER)
+    differential_clustering(normalize(X[:, [2,1]]), N_ITER)
 
 
 if __name__ == '__main__':
