@@ -1,10 +1,11 @@
 import numpy as np
 
 from copy import deepcopy
-from sklearn.datasets import load_iris
-from sklearn.preprocessing import normalize
+from sklearn.datasets import load_iris, make_blobs
+from sklearn.preprocessing import StandardScaler
 from scipy.spatial.distance import mahalanobis
 from matplotlib import pyplot as plt
+from matplotlib.patches import Ellipse
 
 from defines import *
 
@@ -301,10 +302,18 @@ def differential_clustering(X, n_iter, crowding=True):
     precomputed_ranges = np.array([np.delete(np.arange(pop.shape[1]), i)
                                    for i in range(pop.shape[1])])
     if __debug__:
+        assert X.shape[1] == 2, "Can only plot datasets with exactly 2" \
+            " dimensions"
         plt.ion()
         fig, ax = plt.subplots()
         data_scatter = ax.scatter(X[:, 0], X[:, 1], c='green')
-        cluster_scatter = ax.scatter(pop[0, :, 0], pop[0, :, 1], c='red')
+        clusters = []
+        for i in range(pop.shape[1]):
+            ell = Ellipse((pop[0, i, 0], pop[0, i, 1]), pop[1, i, 0], pop[1, i, 1],
+                          color='red', alpha=0.2)
+            clusters.append(ell)
+            ax.add_patch(ell)
+        # cluster_scatter = ax.scatter(pop[0, :, 0], pop[0, :, 1], c='red')
         plt.draw()
     for i in range(n_iter):
         # Construct new (c_i, sigma_i).
@@ -333,19 +342,28 @@ def differential_clustering(X, n_iter, crowding=True):
         else:
             raise NotImplementedError("TODO: Implement without crowding")
         if __debug__:
-            cluster_scatter.set_offsets(np.c_[pop[0, :, 0], pop[0, :, 1]])
+            for i in range(len(clusters)):
+                clusters[i].set_center((pop[0, i, 0], pop[0, i, 1]))
+                clusters[i].width = pop[1, i, 0]
+                clusters[i].height = pop[1, i, 1]
+            # cluster_scatter.set_offsets(np.c_[pop[0, :, 0], pop[0, :, 1]])
             fig.canvas.draw_idle()
-            plt.pause(0.1)
+            plt.pause(0.05)
     if __debug__:
         plt.waitforbuttonpress()
-    clustered_result = collect_repr(pop, X)
-    print(clustered_result)
+    # clustered_result = collect_repr(pop, X)
+    # print(clustered_result)
     # TODO: make some plots here or something, anything
 
 
 def main():
-    X, y = load_iris(return_X_y=True)
-    differential_clustering(normalize(X[:, [2,1]]), N_ITER)
+    scaler = StandardScaler()
+    # X, y = load_iris(return_X_y=True)
+    # scaler.fit(X[:, :2])
+    # differential_clustering(scaler.transform(X[:, :2]), N_ITER)
+    X, y = make_blobs(200, 2)
+    scaler.fit(X)
+    differential_clustering(scaler.transform(X), N_ITER)
 
 
 if __name__ == '__main__':
