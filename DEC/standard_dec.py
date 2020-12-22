@@ -41,7 +41,7 @@ def initialize(X, shape, domain, eps=10e-6, beta=BETA,
     """
     a, b = domain
     assert a < b, "domain invalid; a must be smaller than b"
-    rng = np.random.default_rng(seed=1)
+    rng = np.random.default_rng()
     # centroids = a + (b - a) * rng.random(size=shape, dtype=dtype)
     centroids = X[rng.integers(X.shape[0], size=shape[0])]
     variances = eps + ((b - a) / beta) * rng.random(size=shape, dtype=dtype)
@@ -68,7 +68,7 @@ def get_crossover_indices(n, ranges=None):
         {1...3}.
     """
     assert n > 3, 'The population must have at least 4 individuals'
-    rng = np.random.default_rng(seed=0)
+    rng = np.random.default_rng()
     rs = np.empty((n, 3), dtype=np.int64)
     if ranges is not None:
         computed_ranges = ranges
