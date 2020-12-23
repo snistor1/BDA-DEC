@@ -298,7 +298,7 @@ def differential_clustering(X, y, n_iter, crowding=True):
             Default value is True (False branch hasn't been implemented).
     """
     # This population is only for testing purposes.
-    pop = initialize(X, X.shape[0])
+    pop = initialize(X, POP_SIZE)
     # Precompute ranges that are needed for selecting indices distinct from
     # i, for all i in {0...m-1}. It's an implementation detail, but it reduces
     # execution time to initialize it only once here.
