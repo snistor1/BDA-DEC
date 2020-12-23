@@ -9,8 +9,7 @@ from matplotlib.patches import Ellipse
 from defines import *
 
 
-def initialize(X, shape, domain, eps=10e-6, beta=BETA,
-               dtype=np.float64):
+def initialize(X, n_pop, eps=10e-6, beta=BETA, dtype=np.float64):
     """
     Initializes the population for the CDE clustering algorithm.
 
@@ -39,12 +38,13 @@ def initialize(X, shape, domain, eps=10e-6, beta=BETA,
         centroid matrix is placed at index 0 and the variance matrix at index
         1.
     """
-    a, b = domain
-    assert a < b, "domain invalid; a must be smaller than b"
+    a, b = np.min(X, axis=0), np.max(X, axis=0)
+    assert (a < b).all(), "domain invalid; a must be smaller than b"
     rng = np.random.default_rng()
+    centroids = X[rng.integers(X.shape[0], size=n_pop)]
     # centroids = a + (b - a) * rng.random(size=shape, dtype=dtype)
-    centroids = X[rng.integers(X.shape[0], size=shape[0])]
-    variances = eps + ((b - a) / beta) * rng.random(size=shape, dtype=dtype)
+    variances = eps + rng.random(size=(n_pop, X.shape[1])) * ((b - a) / beta)
+    # variances = eps + ((b - a) / beta) * rng.random(size=shape, dtype=dtype)
     return np.vstack((centroids[np.newaxis, ...],
                       variances[np.newaxis, ...]))
 
@@ -298,7 +298,7 @@ def differential_clustering(X, y, n_iter, crowding=True):
             Default value is True (False branch hasn't been implemented).
     """
     # This population is only for testing purposes.
-    pop = initialize(X, X.shape, [0.0, 0.5])
+    pop = initialize(X, X.shape[0])
     # Precompute ranges that are needed for selecting indices distinct from
     # i, for all i in {0...m-1}. It's an implementation detail, but it reduces
     # execution time to initialize it only once here.
@@ -306,7 +306,6 @@ def differential_clustering(X, y, n_iter, crowding=True):
                                    for i in range(pop.shape[1])])
     if __debug__:
         assert X.shape[1] == 2, "Can only plot datasets with exactly 2 dimensions"
-
         plt.ion()
         fig, ax = plt.subplots()
         data_scatter = ax.scatter(X[:, 0], X[:, 1], c='green')
@@ -354,11 +353,13 @@ def differential_clustering(X, y, n_iter, crowding=True):
             plt.pause(0.05)
     if __debug__:
         plt.waitforbuttonpress()
+        plt.close(fig)
     clustered_result = collect_repr(pop, X)
     fig, axs = plt.subplots(ncols=2)
     axs[0].scatter(X[:, 0], X[:, 1], c=y, cmap='Set1')
     axs[1].scatter(X[:, 0], X[:, 1], c=clustered_result, cmap='Set2')
     plt.show()
+    plt.waitforbuttonpress()
     # print(f'Predicted: \n{clustered_result}')
     # print(f'Actual: \n{y}')
 
