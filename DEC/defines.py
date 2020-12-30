@@ -6,4 +6,5 @@ CROSSOVER_P = 0.6
 DELTA_1 = 0.5
 DELTA_2 = 0.7
 DELTA_3 = 0.9
+DATA_DIR = 'data'
 RESULT_DIR = 'result'

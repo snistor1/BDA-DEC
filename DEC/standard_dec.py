@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pandas as pd
 
 from copy import deepcopy
 from sklearn.datasets import load_iris, make_blobs
@@ -288,6 +289,11 @@ def get_fitness(population, data):
                                  np.ones(data_size))
 
 
+def load_custom_data(file_path):
+    df = pd.read_csv(file_path, sep=' ', header=None)
+    return df.iloc[:, :-1], df.iloc[:, -1]
+
+
 # noinspection PyUnreachableCode
 def differential_clustering(X, y, n_iter, crowding=True):
     """
@@ -380,7 +386,8 @@ def main():
     # X, y = load_iris(return_X_y=True)
     # scaler.fit(X[:, :2])
     # differential_clustering(scaler.transform(X[:, :2]), N_ITER)
-    X, y = make_blobs(200, 2)
+    X, y = load_custom_data(os.path.join(DATA_DIR, '2d-10c.dat'))
+    # X, y = make_blobs(200, 2)
     scaler.fit(X)
     differential_clustering(scaler.transform(X), y, N_ITER)
 
