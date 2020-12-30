@@ -1,8 +1,10 @@
+import os
 import numpy as np
 
 from copy import deepcopy
 from sklearn.datasets import load_iris, make_blobs
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import adjusted_rand_score
 from matplotlib import pyplot as plt
 from matplotlib.patches import Ellipse
 
@@ -254,6 +256,10 @@ def collect_repr(pop, data):
     return clustered_result
 
 
+def evaluate_result(y_true, y_pred):
+    return adjusted_rand_score(y_true, y_pred)
+
+
 def get_fitness(population, data):
     """
     Function that computes fitness values (a.k.a g(c, sigma)) for the
@@ -351,13 +357,18 @@ def differential_clustering(X, y, n_iter, crowding=True):
             # cluster_scatter.set_offsets(np.c_[pop[0, :, 0], pop[0, :, 1]])
             fig.canvas.draw_idle()
             plt.pause(0.05)
+            if i == n_iter - 1:
+                fig.savefig(os.path.join(RESULT_DIR, 'initial_clusters.png'))
     if __debug__:
         plt.waitforbuttonpress()
         plt.close(fig)
     clustered_result = collect_repr(pop, X)
+    ari = evaluate_result(y, clustered_result)
+    print(f'ARI: {ari}')
     fig, axs = plt.subplots(ncols=2)
     axs[0].scatter(X[:, 0], X[:, 1], c=y, cmap='Set1')
     axs[1].scatter(X[:, 0], X[:, 1], c=clustered_result, cmap='Set2')
+    plt.savefig(os.path.join(RESULT_DIR, 'final_clusters.png'))
     plt.show()
     plt.waitforbuttonpress()
     # print(f'Predicted: \n{clustered_result}')
