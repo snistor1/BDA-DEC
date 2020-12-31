@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+import pickle as pkl
 
 from copy import deepcopy
 from sklearn.datasets import load_iris, make_blobs
@@ -9,7 +10,16 @@ from sklearn.metrics import adjusted_rand_score
 from matplotlib import pyplot as plt
 from matplotlib.patches import Ellipse
 
-from defines import *
+N_ITER = 300
+POP_SIZE = 100
+BETA = 3.0
+F_VAL = 0.3
+CROSSOVER_P = 0.8
+DELTA_1 = 0.01
+DELTA_2 = 0.05
+DELTA_3 = 0.9
+DATA_DIR = 'data'
+RESULT_DIR = 'result'
 
 
 def euclidian_distance(x, y):
@@ -228,7 +238,8 @@ def collect_repr(pop, data):
     nr_repr = 1
     next_label = 2
     for i in range(1, len(centers)):
-        distances = [compute_repr_distance(centers[i], repr_set[0][j], repr_set[1][j]) for j in range(nr_repr)]
+        distances = np.array([compute_repr_distance(centers[i], repr_set[0][j], repr_set[1][j]) for j in range(nr_repr)])
+        distances = np.divide(distances, np.sum(distances))
         closest = np.argmin(distances, axis=0)
         if type(closest) is np.ndarray:
             closest = closest[0]
@@ -319,6 +330,42 @@ def load_custom_data(file_path):
     return df.iloc[:, :-1], df.iloc[:, -1]
 
 
+def compute_best_delta(X, y, pop_file):
+    global DELTA_1, DELTA_2, DELTA_3
+    with open(pop_file, 'rb') as f:
+        pop = pkl.load(f)
+    DELTA_1, DELTA_2, DELTA_3 = 0, 0, 0
+    best_delta_1, best_delta_2, best_delta_3 = 0, 0, 0
+    max_ari = 0
+    with open(os.path.join(RESULT_DIR, 'results.txt'), 'w') as f:
+        for i in range(18):
+            DELTA_1 += 0.05
+            DELTA_2, DELTA_3 = DELTA_1, DELTA_1
+            for j in range(18):
+                if DELTA_2 > 1:
+                    break
+                DELTA_2 += 0.05
+                DELTA_3 = DELTA_2
+                for k in range(18):
+                    if DELTA_3 > 1:
+                        break
+                    DELTA_3 += 0.05
+                    clustered_result = collect_repr(pop, X)
+                    ari = evaluate_result(y, clustered_result)
+                    if ari > max_ari:
+                        best_delta_1, best_delta_2, best_delta_3 = DELTA_1, DELTA_2, DELTA_3
+                    print(f'ARI: {ari}')
+                    print(f'DELTA: {DELTA_1}, {DELTA_2}, {DELTA_3}', file=f)
+                    print(f'INDEX: {i}, {j}, {k}', file=f)
+                    print(f'ARI: {ari}\n', file=f)
+                    fig, axs = plt.subplots(ncols=2)
+                    axs[0].scatter(X[:, 0], X[:, 1], c=y, cmap='Set1')
+                    axs[1].scatter(X[:, 0], X[:, 1], c=clustered_result, cmap='Set2')
+                    plt.savefig(os.path.join(RESULT_DIR, f'final_clusters_{i}_{j}_{k}.png'))
+                    plt.close(fig)
+    return best_delta_1, best_delta_2, best_delta_3
+
+
 # noinspection PyUnreachableCode
 def differential_clustering(X, y, n_iter, crowding=True, smart_init=False):
     """
@@ -379,7 +426,10 @@ def differential_clustering(X, y, n_iter, crowding=True, smart_init=False):
             replace_mask = new_fitness > old_fitness
             pop[:, replace_mask, :] = new_pop[:, replace_mask, :]
         else:
-            raise NotImplementedError("TODO: Implement without crowding")
+            old_fitness, new_fitness = (get_fitness(pop, X),
+                                        get_fitness(new_pop, X))
+            replace_mask = new_fitness > old_fitness
+            pop[:, replace_mask, :] = new_pop[:, replace_mask, :]
         if __debug__:
             for k in range(len(clusters)):
                 clusters[k].set_center((pop[0, k, 0], pop[0, k, 1]))
@@ -393,12 +443,14 @@ def differential_clustering(X, y, n_iter, crowding=True, smart_init=False):
     if __debug__:
         plt.waitforbuttonpress()
         plt.close(fig)
+    with open('population.pkl', 'wb') as f:
+        pkl.dump(pop, f)
     clustered_result = collect_repr(pop, X)
     ari = evaluate_result(y, clustered_result)
     print(f'ARI: {ari}')
     fig, axs = plt.subplots(ncols=2)
     axs[0].scatter(X[:, 0], X[:, 1], c=y, cmap='Set1')
-    axs[1].scatter(X[:, 0], X[:, 1], c=clustered_result, cmap='Set2')
+    axs[1].scatter(X[:, 0], X[:, 1], c=clustered_result, cmap='Set1')
     plt.savefig(os.path.join(RESULT_DIR, 'final_clusters.png'))
     plt.show()
     plt.waitforbuttonpress()
@@ -412,9 +464,10 @@ def main():
     # scaler.fit(X[:, :2])
     # differential_clustering(scaler.transform(X[:, :2]), N_ITER)
     X, y = load_custom_data(os.path.join(DATA_DIR, '2d-10c.dat'))
-    # X, y = make_blobs(200, 2)
+    # X, y = make_blobs(2000, 2, centers=3)
     scaler.fit(X)
-    differential_clustering(scaler.transform(X), y, N_ITER, smart_init=True)
+    # compute_best_delta(scaler.transform(X), y, 'population.pkl')
+    differential_clustering(scaler.transform(X), y, N_ITER, crowding=True, smart_init=False)
 
 
 if __name__ == '__main__':
