@@ -12,7 +12,11 @@ from matplotlib.patches import Ellipse
 from defines import *
 
 
-def initialize(X, n_pop, eps=10e-6, beta=BETA, dtype=np.float64):
+def euclidian_distance(x, y):
+    return np.linalg.norm(x - y)
+
+
+def initialize(X, n_pop, eps=10e-6, beta=BETA, dtype=np.float64, smart_init=False):
     """
     Initializes the population for the CDE clustering algorithm.
 
@@ -44,7 +48,28 @@ def initialize(X, n_pop, eps=10e-6, beta=BETA, dtype=np.float64):
     a, b = np.min(X, axis=0), np.max(X, axis=0)
     assert (a < b).all(), "domain invalid; a must be smaller than b"
     rng = np.random.default_rng()
-    centroids = X[rng.integers(X.shape[0], size=n_pop)]
+    if not smart_init:
+        centroids = X[rng.integers(X.shape[0], size=n_pop)]
+    else:
+        centroids = np.zeros(shape=(n_pop, X[0].shape[0]))
+        # the first centroid will be a randomly selected data point
+        centroids[0] = X[rng.integers(X.shape[0], size=1)]
+        for k in range(1, n_pop):
+            max_dist, max_p = 0, 0
+            for i in range(X.shape[0]):
+                point = X[i, :]
+                min_dist, min_p = 999, 0
+                # compute distance of 'point' from each of the previously selected centroid
+                # and store the minimum distance
+                for j in range(k):
+                    dist = np.linalg.norm(point - centroids[j])
+                    if dist < min_dist:
+                        min_dist, min_p = dist, i
+                if min_dist > max_dist:
+                    max_dist, max_p = min_dist, min_p
+            # select data point with maximum distance as our next centroid
+            centroids[k] = X[max_p, :]
+
     # centroids = a + (b - a) * rng.random(size=shape, dtype=dtype)
     variances = eps + rng.random(size=(n_pop, X.shape[1])) * ((b - a) / beta)
     # variances = eps + ((b - a) / beta) * rng.random(size=shape, dtype=dtype)
@@ -295,7 +320,7 @@ def load_custom_data(file_path):
 
 
 # noinspection PyUnreachableCode
-def differential_clustering(X, y, n_iter, crowding=True):
+def differential_clustering(X, y, n_iter, crowding=True, smart_init=False):
     """
     CDE-based clustering algorithm with gaussian mixtures.
 
@@ -310,7 +335,7 @@ def differential_clustering(X, y, n_iter, crowding=True):
             Default value is True (False branch hasn't been implemented).
     """
     # This population is only for testing purposes.
-    pop = initialize(X, POP_SIZE)
+    pop = initialize(X, min(X.shape[0] // 2, POP_SIZE), smart_init=smart_init)
     # Precompute ranges that are needed for selecting indices distinct from
     # i, for all i in {0...m-1}. It's an implementation detail, but it reduces
     # execution time to initialize it only once here.
@@ -389,7 +414,7 @@ def main():
     X, y = load_custom_data(os.path.join(DATA_DIR, '2d-10c.dat'))
     # X, y = make_blobs(200, 2)
     scaler.fit(X)
-    differential_clustering(scaler.transform(X), y, N_ITER)
+    differential_clustering(scaler.transform(X), y, N_ITER, smart_init=True)
 
 
 if __name__ == '__main__':
