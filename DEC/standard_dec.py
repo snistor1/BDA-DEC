@@ -369,7 +369,7 @@ def compute_best_delta(X, y, pop_file):
 
 
 # noinspection PyUnreachableCode
-def differential_clustering(X, y, n_iter, crowding=True, smart_init=False, wait_on_plots=True):
+def differential_clustering(X, y, n_iter, crowding=True, smart_init=False, wait_on_plots=True, verbose=True):
     """
     CDE-based clustering algorithm with gaussian mixtures.
 
@@ -405,7 +405,8 @@ def differential_clustering(X, y, n_iter, crowding=True, smart_init=False, wait_
         plt.draw()
     for i in range(n_iter):
         # Construct new (c_i, sigma_i).
-        print(f'Iteration: {i + 1}')
+        if verbose:
+            print(f'Iteration: {i + 1}')
         new_pop = search(pop, ranges=precomputed_ranges)
         if crowding:
             # Find the element (c, sigma) most similar to (c_i, sigma_i).
