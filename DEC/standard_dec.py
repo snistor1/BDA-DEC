@@ -18,8 +18,10 @@ CROSSOVER_P = 0.8
 DELTA_1 = 0.01
 DELTA_2 = 0.05
 DELTA_3 = 0.9
-DATA_DIR = 'data'
-RESULT_DIR = 'result'
+
+DIR_PATH = os.path.dirname(os.path.realpath(__file__))
+DATA_DIR = f'{DIR_PATH}/../data'
+RESULT_DIR = f'{DIR_PATH}/result'
 
 
 def euclidian_distance(x, y):
@@ -367,7 +369,7 @@ def compute_best_delta(X, y, pop_file):
 
 
 # noinspection PyUnreachableCode
-def differential_clustering(X, y, n_iter, crowding=True, smart_init=False):
+def differential_clustering(X, y, n_iter, crowding=True, smart_init=False, wait_on_plots=True):
     """
     CDE-based clustering algorithm with gaussian mixtures.
 
@@ -441,7 +443,8 @@ def differential_clustering(X, y, n_iter, crowding=True, smart_init=False):
             if i == n_iter - 1:
                 fig.savefig(os.path.join(RESULT_DIR, 'initial_clusters.png'))
     if __debug__:
-        plt.waitforbuttonpress()
+        if wait_on_plots:
+            plt.waitforbuttonpress()
         plt.close(fig)
     with open('population.pkl', 'wb') as f:
         pkl.dump(pop, f)
@@ -453,9 +456,11 @@ def differential_clustering(X, y, n_iter, crowding=True, smart_init=False):
     axs[1].scatter(X[:, 0], X[:, 1], c=clustered_result, cmap='Set1')
     plt.savefig(os.path.join(RESULT_DIR, 'final_clusters.png'))
     plt.show()
-    plt.waitforbuttonpress()
+    if wait_on_plots:
+        plt.waitforbuttonpress()
     # print(f'Predicted: \n{clustered_result}')
     # print(f'Actual: \n{y}')
+    return clustered_result
 
 
 def main():
