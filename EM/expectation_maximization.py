@@ -52,8 +52,8 @@ def plot_results(X, Y_, means, covariances, title):
     plt.savefig(os.path.join(RESULT_DIR, 'clusters_EM.png'))
 
 
-def gaussian_mixture(X, Y):
-    gm = GaussianMixture(Y.max()).fit(X)
+def gaussian_mixture(X, n_clusters):
+    gm = GaussianMixture(n_clusters).fit(X)
     return gm
 
 
