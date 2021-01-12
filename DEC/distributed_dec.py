@@ -14,7 +14,7 @@ from pyspark.ml.linalg import Vectors, DenseVector, VectorUDT
 from pyspark.ml.pipeline import Pipeline
 from pyspark.sql import SparkSession, Window, DataFrame
 import pyspark.sql.functions as F
-from pyspark.sql.functions import udf, pandas_udf, PandasUDFType
+from pyspark.sql.functions import udf
 from pyspark.sql.types import DoubleType, StructType, StructField, NullType
 # from sklearn.preprocessing import StandardScaler
 
@@ -22,11 +22,12 @@ N_ITER = 5
 POP_SIZE = 40
 BETA = 3.0
 F_VAL = 0.3
-CROSSOVER_P = 0.8
+CROSSOVER_P = 0.2
 DELTA_1 = 0.01
 DELTA_2 = 0.05
 DELTA_3 = 0.9
 
+N_PARTITIONS = 4
 DIR_PATH = os.path.dirname(os.path.realpath(__file__))
 DATA_DIR = f'{DIR_PATH}/../data'
 RESULT_DIR = f'{DIR_PATH}/result'
@@ -103,20 +104,105 @@ def mahalanobis(c1 : DenseVector, c2 : DenseVector, sigma1 : DenseVector):
     return float(np.dot(diff, diff))
 
 
+def get_crossover_indices(n):
+    """
+    Generates the distinct indices i, r1, r2 and r3 that are used in the
+    crossover procedure.
+
+    Args:
+        n (int):
+            The size of the population.
+
+    Returns: np.ndarray
+        The n x 4 matrix that contains i on column 0 and r{1...3} on columns
+        {1...3}.
+    """
+    assert n > 3, 'The population must have at least 4 individuals'
+    rng = np.random.default_rng()
+    rs = rng.random((n, 3)).argsort(axis=0)
+    return np.hstack((np.arange(n).reshape((-1, 1)), rs))
+
+
+# def get_crossover_indices(n, ranges=None):
+#     """
+#     Generates the distinct indices i, r1, r2 and r3 that are used in the
+#     crossover procedure.
+
+#     Args:
+#         n (int):
+#             The size of the population.
+#         ranges (np.ndarray):
+#             A 2D matrix used to generate the crossover indices, in which row
+#             i contains all numbers from 0 to n-1 except i. These represent the
+#             sample spaces of np.random.choice for each individual in the
+#             population.
+
+#     Returns: np.ndarray
+#         The n x 4 matrix that contains i on column 0 and r{1...3} on columns
+#         {1...3}.
+#     """
+#     assert n > 3, 'The population must have at least 4 individuals'
+#     rng = np.random.default_rng()
+#     rs = np.empty((n, 3), dtype=np.int64)
+#     if ranges is not None:
+#         computed_ranges = ranges
+#     else:
+#         computed_ranges = np.array([np.delete(np.arange(n), i)
+#                                     for i in range(n)])
+#     for i in range(n):
+#         rs[i, :] = rng.choice(computed_ranges[i], size=3, replace=False)
+#     return np.hstack((np.arange(n).reshape((-1, 1)), rs))
+
+
+def search(pop_df, F=F_VAL):
+    """
+    The search operator shifts individuals in order to look for local
+    optimum values. It mutates and performs crossover all-in-one.
+    """
+    pop = np.array(pop_df.select("centroids", "variances").collect())
+    local_ids = np.array(pop_df.select("id").collect())
+    pop_size = pop.shape[0]
+    rng = np.random.default_rng()
+    rs = get_crossover_indices(pop_size)
+    pop_i, pop_r1, pop_r2, pop_r3 = (pop[rs[:, 0]],
+                                     pop[rs[:, 1]],
+                                     pop[rs[:, 2]],
+                                     pop[rs[:, 3]])
+    # See eq. (6) in distributed CDE paper and eq. (12) in the normal
+    # CDE paper.
+    new_pop = np.where(rng.random(size=pop.shape,
+                                  dtype=np.float32) < CROSSOVER_P,
+                       pop_r3 + F * (pop_r1 - pop_r2),
+                       pop_i)
+    # Make variances positive.
+    centroids, variances = np.swapaxes(new_pop, 0, 1)
+    new_pop[1] = np.abs(new_pop[1])
+    pop_pandas = pd.DataFrame(np.hstack((centroids, variances)))
+    pop_pandas['id'] = local_ids
+    pop_pandas = pop_pandas[['id'] + [col for col in pop_pandas.columns
+                                      if col != 'id']]
+    new_pop_df = spark.createDataFrame(pop_pandas)
+    midpoint = (len(new_pop_df.columns) - 1) // 2
+    new_pop_columns = new_pop_df.columns[1:]
+    assembler = VectorAssembler(inputCols=new_pop_columns[:midpoint],
+                                outputCol="centroids")
+    new_pop_df = assembler.transform(new_pop_df)
+    assembler = VectorAssembler(inputCols=new_pop_columns[midpoint:],
+                                outputCol="variances")
+    new_pop_df = assembler.transform(new_pop_df) \
+        .select("id", "centroids", "variances") \
+        .repartition(N_PARTITIONS, "id")
+    return new_pop_df
+
+
 def compute_distances(X: DataFrame, Y: DataFrame) -> DataFrame:
     m, n = len(X.columns), len(Y.columns)
     assert m == 3 and n in [1, 3]
     if n == 1:
-        # Distance between centroids and data
-        # !!! groupBy after crossJoin is not safe,
-        # you should create an unique index before
         distances_df = X.withColumnRenamed("centroids", "c1") \
                         .withColumnRenamed("variances", "s1") \
                         .crossJoin(Y).withColumnRenamed("points", "c2")
     else:
-        # Distance between centroids and centroids
-        # !!! groupBy after crossJoin is not safe,
-        # you should create an unique index before
         distances_df = X.withColumnRenamed("centroids", "c1") \
                         .withColumnRenamed("variances", "s1") \
                         .withColumnRenamed("id", "id1") \
@@ -129,12 +215,6 @@ def compute_distances(X: DataFrame, Y: DataFrame) -> DataFrame:
                                                        F.col("s1")))
     return distances_df
 
-
-@F.pandas_udf(returnType=StructType([StructField("prod", DoubleType())]),
-              functionType=F.PandasUDFType.GROUPED_MAP)
-def norm_udaf(pdf):
-    print(pdf)
-    return pd.DataFrame([float(0.0)], columns=["prod"])
 
 @udf(returnType=DoubleType())
 def norm(sigma: DenseVector):
@@ -151,13 +231,6 @@ def get_fitness(population: DataFrame, data: DataFrame) -> DataFrame:
                              .agg(F.sum("fitness").alias("fitness")) \
                              .withColumnRenamed("id", "id_fitness")
     return fitness_df
-
-
-def search(population: DataFrame, F=F_VAL) -> DataFrame:
-    # pop_r1 = population.orderBy(F.rand()).show()
-    # pop_r2 = population.orderBy(F.rand()).show()
-    # pop_r3 = population.orderBy(F.rand()).show()
-    return population
 
 
 def compute_repr_distance(x, y, sigma):
@@ -298,8 +371,8 @@ def classify_data(repr_set, data):
     return cluster_result
 
 
-def differential_clustering_distributed(X, n_partitions=4):
-    N_DIMS = len(X.columns)
+def differential_clustering_distributed(X):
+    N_DIMS = np.array(X.take(1)).size
     # Generate population.
     sample_X = np.array(X.sample(False, 0.05).collect()).reshape(-1, 2)
     centroids, variances = initialize(sample_X, POP_SIZE)
@@ -309,7 +382,7 @@ def differential_clustering_distributed(X, n_partitions=4):
         .withColumn("id", F.monotonically_increasing_id()) \
         .select("id", "centroids", "variances")
     population_df = population_df \
-        .repartition(n_partitions, "id")
+        .repartition(N_PARTITIONS, "id")
     # population_df.show()
     population_df = population_df.cache()
     for i in range(N_ITER):
@@ -344,7 +417,7 @@ def differential_clustering_distributed(X, n_partitions=4):
             .withColumnRenamed("id1", "id") \
             .withColumnRenamed("final_c", "centroids") \
             .withColumnRenamed("final_s", "variances")
-        population_df = population_df.repartition(n_partitions, "id")
+        population_df = population_df.repartition(N_PARTITIONS, "id")
 
     local_centroids = np.array(population_df.select("centroids").collect()) \
         .reshape(-1, N_DIMS)
@@ -355,7 +428,6 @@ def differential_clustering_distributed(X, n_partitions=4):
     reprs = collect_repr(local_pop)
     X_collect = np.array(X.select("points").collect()) \
         .reshape(-1, N_DIMS)
-    print("Making predictions...")
     y_pred = classify_data(reprs, X_collect)
     return y_pred
     # ...or...
@@ -364,7 +436,7 @@ def differential_clustering_distributed(X, n_partitions=4):
     # y_pred = classify_data(reprs, X)
 
 
-def load_dataset(filename: str, delimiter=' ', n_partitions=4):
+def load_dataset(filename: str, delimiter=' '):
     # spark = SparkSession.builder \
     #                     .appName("Differential Evolution Clustering") \
     #                     .getOrCreate()
@@ -375,7 +447,7 @@ def load_dataset(filename: str, delimiter=' ', n_partitions=4):
                 .option("delimiter", delimiter) \
                 .load(os.path.join(DATA_DIR, filename))
     label_column = data.schema[len(data.columns) - 1].name
-    X = data.drop(label_column).repartition(n_partitions).cache()
+    X = data.drop(label_column).repartition(N_PARTITIONS).cache()
     y = np.array(data.select(label_column).collect()) \
         .reshape(-1)
     # Preprocess data.
@@ -402,10 +474,8 @@ def load_dataset(filename: str, delimiter=' ', n_partitions=4):
 
 
 def main():
-    X, y = load_dataset("2d-10c.dat", delimiter=' ', n_partitions=4)
-    print(X)
-    print(y)
-    y_pred = differential_clustering_distributed(X, n_partitions=4)
+    X, y = load_dataset("2d-10c.dat", delimiter=' ')
+    y_pred = differential_clustering_distributed(X)
     print(y_pred)
 
 
