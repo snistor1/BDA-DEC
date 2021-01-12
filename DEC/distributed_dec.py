@@ -104,7 +104,7 @@ def mahalanobis(c1 : DenseVector, c2 : DenseVector, sigma1 : DenseVector):
     return float(np.dot(diff, diff))
 
 
-def get_crossover_indices(n):
+def get_crossover_indices(n, ranges=None):
     """
     Generates the distinct indices i, r1, r2 and r3 that are used in the
     crossover procedure.
@@ -112,6 +112,11 @@ def get_crossover_indices(n):
     Args:
         n (int):
             The size of the population.
+        ranges (np.ndarray):
+            A 2D matrix used to generate the crossover indices, in which row
+            i contains all numbers from 0 to n-1 except i. These represent the
+            sample spaces of np.random.choice for each individual in the
+            population.
 
     Returns: np.ndarray
         The n x 4 matrix that contains i on column 0 and r{1...3} on columns
@@ -119,39 +124,15 @@ def get_crossover_indices(n):
     """
     assert n > 3, 'The population must have at least 4 individuals'
     rng = np.random.default_rng()
-    rs = rng.random((n, 3)).argsort(axis=0)
+    rs = np.empty((n, 3), dtype=np.int64)
+    if ranges is not None:
+        computed_ranges = ranges
+    else:
+        computed_ranges = np.array([np.delete(np.arange(n), i)
+                                    for i in range(n)])
+    for i in range(n):
+        rs[i, :] = rng.choice(computed_ranges[i], size=3, replace=False)
     return np.hstack((np.arange(n).reshape((-1, 1)), rs))
-
-
-# def get_crossover_indices(n, ranges=None):
-#     """
-#     Generates the distinct indices i, r1, r2 and r3 that are used in the
-#     crossover procedure.
-
-#     Args:
-#         n (int):
-#             The size of the population.
-#         ranges (np.ndarray):
-#             A 2D matrix used to generate the crossover indices, in which row
-#             i contains all numbers from 0 to n-1 except i. These represent the
-#             sample spaces of np.random.choice for each individual in the
-#             population.
-
-#     Returns: np.ndarray
-#         The n x 4 matrix that contains i on column 0 and r{1...3} on columns
-#         {1...3}.
-#     """
-#     assert n > 3, 'The population must have at least 4 individuals'
-#     rng = np.random.default_rng()
-#     rs = np.empty((n, 3), dtype=np.int64)
-#     if ranges is not None:
-#         computed_ranges = ranges
-#     else:
-#         computed_ranges = np.array([np.delete(np.arange(n), i)
-#                                     for i in range(n)])
-#     for i in range(n):
-#         rs[i, :] = rng.choice(computed_ranges[i], size=3, replace=False)
-#     return np.hstack((np.arange(n).reshape((-1, 1)), rs))
 
 
 def search(pop_df, F=F_VAL):
@@ -176,7 +157,7 @@ def search(pop_df, F=F_VAL):
                        pop_i)
     # Make variances positive.
     centroids, variances = np.swapaxes(new_pop, 0, 1)
-    new_pop[1] = np.abs(new_pop[1])
+    variances = np.abs(variances)
     pop_pandas = pd.DataFrame(np.hstack((centroids, variances)))
     pop_pandas['id'] = local_ids
     pop_pandas = pop_pandas[['id'] + [col for col in pop_pandas.columns
@@ -219,6 +200,7 @@ def compute_distances(X: DataFrame, Y: DataFrame) -> DataFrame:
 @udf(returnType=DoubleType())
 def norm(sigma: DenseVector):
     return float((1 / np.sqrt(np.prod(sigma.toArray()))) / POP_SIZE)
+
 
 def get_fitness(population: DataFrame, data: DataFrame) -> DataFrame:
     # We need the squared distances in order to compute the fitness score.
